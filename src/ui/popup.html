@@ -5,5 +5,14 @@
 <label><input id="sound" type="checkbox"> Sound alert</label>
 <label><input id="panel" type="checkbox" checked> Show panel</label>
 <label><input id="notify" type="checkbox"> Browser notification</label>
-<button id="save">Save</button><p id="status"></p><p class="disclaimer">Not financial advice.</p></main>
+<label><input id="draw" type="checkbox" checked> Draw on chart</label>
+<label>RR (TP multiple) <input id="rr" type="number" min="0.5" max="10" step="0.5" value="2"></label>
+<label>SL mode <select id="slMode"><option value="atr">ATR</option><option value="swing">Swing</option></select></label>
+<label>ATR period <input id="atrPeriod" type="number" min="2" max="100" value="14"></label>
+<label>ATR multiplier <input id="atrMult" type="number" min="0.5" max="5" step="0.1" value="1.5"></label>
+<label>Swing lookback <input id="swingLookback" type="number" min="2" max="50" value="5"></label>
+<label>Spread (price units) <input id="spread" type="number" min="0" step="any" value="0"></label>
+<label>Max drawn trades <input id="maxDrawn" type="number" min="1" max="50" value="15"></label>
+<button id="clearDrawings">Clear drawings</button>
+<button id="save">Save</button><p id="status"></p><p class="disclaimer">Not financial advice. No fees/slippage beyond the spread param.</p></main>
 <script type="module" src="./popup.ts"></script></body></html>

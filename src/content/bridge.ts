@@ -3,14 +3,24 @@ import { lastEma } from "../core/ema";
 import type { Candle } from "../core/parser";
 import { createEma44 } from "../strategies/ema44";
 import { pendingSignal } from "../strategies/types";
+import { runBacktest, type BacktestResult } from "../core/backtest";
+import { buildTrade, DEFAULT_TRADE_PARAMS, type Trade, type TradeParams } from "../core/trade-model";
+import type { SweepResult } from "../core/sweep";
 import { renderPanel, hidePanel, isPanelAttached, type PanelState } from "../ui/panel";
 
 const NS = "tv-signal-lens";
 const store = new CandleStore(5000);
 let mode: "WS" | "DOM" = "WS";
+let drawMode: string | null = null;
 let lastWsAt = 0; let symbol = ""; let timeframe = "";
-let emaPeriod = 44; let showPanel = true; let sound = false; let notify = false;
+let emaPeriod = 44; let showPanel = true; let sound = false; let notify = false; let drawEnabled = true;
+let tradeParams: TradeParams = { ...DEFAULT_TRADE_PARAMS };
 let lastNotifiedKey = "";
+let cachedBacktest: BacktestResult | null = null;
+let cachedKey = "";
+let sweepResult: SweepResult | null = null;
+let sweepInFlight = false; let lastSweepAt = 0; let lastSweepKey = "";
+let drawSuppressed = false; let lastDrawSig = ""; let clearToken = 0;
 
 export function symbolFromDom(): { symbol: string; timeframe: string } {
   const param = new URL(location.href).searchParams.get("symbol");
@@ -20,13 +30,42 @@ export function symbolFromDom(): { symbol: string; timeframe: string } {
 }
 function legendOhlc(): Candle | null {
   const text = [...document.querySelectorAll('[data-name="legend-source-item"]')].map((el) => el.textContent ?? "").join(" ");
-  // TradingView legend reads like "O4,026.660 H4,027.855 L4,022.830 C4,024.520" — parse labels first.
   const labelled = text.match(/O\s*([\d,]+\.?\d*)\s*H\s*([\d,]+\.?\d*)\s*L\s*([\d,]+\.?\d*)\s*C\s*([\d,]+\.?\d*)/);
   const nums = labelled ? labelled.slice(1).map((s) => Number(s.replace(/,/g, "")))
     : [...text.matchAll(/-?\d[\d,]*\.?\d*/g)].map((m) => Number(m[0].replace(/,/g, ""))).filter(Number.isFinite);
   if (nums.length < 4 || nums.some((n) => !Number.isFinite(n))) return null;
   const [o, h, l, c] = nums.slice(0, 4);
   return { t: Math.floor(Date.now() / 60000) * 60, o, h, l, c, v: 0 };
+}
+function paramKey(): string {
+  return JSON.stringify([emaPeriod, tradeParams]);
+}
+function maybeSweep(closed: Candle[]) {
+  const key = paramKey() + "|" + closed.length;
+  // Recompute sweep when params change or ~20 more candles arrive, at most every 5s.
+  const bucketChanged = Math.floor(closed.length / 20) !== Math.floor((Number(lastSweepKey.split("|").pop()) || 0) / 20);
+  if (sweepInFlight || key === lastSweepKey || (!bucketChanged && lastSweepKey && Date.now() - lastSweepAt < 5000)) {
+    if (!lastSweepKey) { /* first run below */ } else return;
+  }
+  if (closed.length < 30) return;
+  sweepInFlight = true; lastSweepAt = Date.now();
+  chrome.runtime.sendMessage({ type: "tvsl-sweep", candles: closed, params: tradeParams }, (res: { result?: SweepResult; error?: string } | undefined) => {
+    sweepInFlight = false;
+    if (res?.result) { sweepResult = res.result; lastSweepKey = key; refreshPanel(); }
+    else if (res?.error) console.warn("[tv-signal-lens] sweep failed:", res.error);
+  });
+}
+function forwardDraw(trades: Trade[], liveTrade: Trade | null, liveT: number) {
+  const all = liveTrade ? [...trades, liveTrade] : trades;
+  const sig = all.map((t) => `${t.id}:${t.result}`).join(",");
+  if (drawSuppressed) {
+    if (sig !== lastDrawSig) drawSuppressed = false; else return;
+  }
+  lastDrawSig = sig;
+  window.postMessage({
+    source: NS, type: "tvsl-draw", trades: all, liveT,
+    drawEnabled, maxDrawn: tradeParams.maxDrawn, symbol, timeframe, clear: false,
+  }, window.location.origin);
 }
 function refreshPanel() {
   const all = store.all(); const closed = store.closed(); const forming = store.last();
@@ -36,16 +75,29 @@ function refreshPanel() {
   const lastClosed = closed[closed.length - 1];
   const bias = !lastClosed || ema === null ? "NEUTRAL" : lastClosed.c > ema ? "BUY" : lastClosed.c < ema ? "SELL" : "NEUTRAL";
   const pending = pendingSignal(forming, ema);
+  // Incremental recompute: only when a candle closes or params change.
+  const key = `${closed.length}|${paramKey()}`;
+  if (key !== cachedKey) { cachedBacktest = runBacktest(closed, signals, tradeParams); cachedKey = key; }
+  // Live/pending trade: entry = forming close, SL/TP from params (unconfirmed, OPEN).
+  let liveTrade: Trade | null = null;
+  if (pending && forming) {
+    const sig = { t: forming.t, type: pending.type, price: forming.c, reason: pending.reason };
+    liveTrade = buildTrade(sig, all, all.length - 1, tradeParams);
+  }
   const state: PanelState = {
     symbol, timeframe, lastPrice: forming?.c ?? null, ema, emaPeriod, bias,
     signals, pending: pending ? `${pending.type} @ ${pending.price} (pending)` : null,
-    source: mode, count: all.length,
+    source: mode, count: all.length, drawMode,
+    backtest: cachedBacktest?.stats ?? null, equityCurve: cachedBacktest?.equityCurve ?? [0],
+    sweep: sweepResult, firstT: all[0]?.t ?? null, lastT: forming?.t ?? null,
   };
   if (showPanel) renderPanel(state); else hidePanel();
+  if (cachedBacktest) forwardDraw(cachedBacktest.trades, liveTrade, forming?.t ?? Math.floor(Date.now() / 1000));
+  maybeSweep(closed);
   const latest = signals[signals.length - 1];
-  const key = latest ? `${latest.t}-${latest.type}` : "";
-  if (latest && key !== lastNotifiedKey) {
-    lastNotifiedKey = key;
+  const sigKey = latest ? `${latest.t}-${latest.type}` : "";
+  if (latest && sigKey !== lastNotifiedKey) {
+    lastNotifiedKey = sigKey;
     if (sound) { try { const ctx = new AudioContext(); const o = ctx.createOscillator(); o.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.15); } catch { /* audio unavailable */ } }
     if (notify) chrome.runtime.sendMessage({ type: "tvsl-notify", title: `TV Signal Lens: ${latest.type}`, message: `${symbol} ${latest.type} @ ${latest.price}` }).catch(() => {});
   }
@@ -53,8 +105,9 @@ function refreshPanel() {
 }
 window.addEventListener("message", (ev: MessageEvent) => {
   if (ev.origin !== window.location.origin) return;
-  const d = ev.data as { source?: string; type?: string; candles?: Candle[]; symbol?: string; timeframe?: string };
+  const d = ev.data as { source?: string; type?: string; candles?: Candle[]; symbol?: string; timeframe?: string; mode?: string };
   if (!d || d.source !== NS) return;
+  if (d.type === "tvsl-draw-mode" && d.mode) { if (drawMode !== d.mode) { drawMode = d.mode; refreshPanel(); } return; }
   if (d.type === "candles" && Array.isArray(d.candles)) {
     mode = "WS"; lastWsAt = Date.now(); symbol = d.symbol || symbol; timeframe = d.timeframe || timeframe;
     store.upsert(d.candles); refreshPanel();
@@ -67,29 +120,39 @@ setTimeout(() => {
   if (document.body) new MutationObserver(apply).observe(document.body, { subtree: true, childList: true, characterData: true });
   apply();
 }, 10_000);
-chrome.storage.sync.get(["emaPeriod", "panel", "sound", "notify"], (v) => {
+function applyStorage(v: Record<string, unknown>) {
   if (typeof v.emaPeriod === "number") emaPeriod = v.emaPeriod;
   if (typeof v.panel === "boolean") showPanel = v.panel;
   if (typeof v.sound === "boolean") sound = v.sound;
   if (typeof v.notify === "boolean") notify = v.notify;
-  console.info("[tv-signal-lens] settings loaded, showPanel =", showPanel);
-  refreshPanel();
+  if (typeof v.draw === "boolean") drawEnabled = v.draw;
+  if (typeof v.rr === "number") tradeParams.rr = v.rr;
+  if (typeof v.slMode === "string") tradeParams.slMode = v.slMode as "atr" | "swing";
+  if (typeof v.atrPeriod === "number") tradeParams.atrPeriod = v.atrPeriod;
+  if (typeof v.atrMult === "number") tradeParams.atrMult = v.atrMult;
+  if (typeof v.swingLookback === "number") tradeParams.swingLookback = v.swingLookback;
+  if (typeof v.spread === "number") tradeParams.spread = v.spread;
+  if (typeof v.maxDrawn === "number") tradeParams.maxDrawn = v.maxDrawn;
+}
+chrome.storage.sync.get(["emaPeriod", "panel", "sound", "notify", "draw", "rr", "slMode", "atrPeriod", "atrMult", "swingLookback", "spread", "maxDrawn"], (v) => {
+  applyStorage(v); console.info("[tv-signal-lens] settings loaded, showPanel =", showPanel); refreshPanel();
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync") return;
-  if (changes.emaPeriod?.newValue) emaPeriod = changes.emaPeriod.newValue as number;
-  if (typeof changes.panel?.newValue === "boolean") showPanel = changes.panel.newValue;
-  if (typeof changes.sound?.newValue === "boolean") sound = changes.sound.newValue;
-  if (typeof changes.notify?.newValue === "boolean") notify = changes.notify.newValue;
-  refreshPanel();
+  if (changes.clearDrawingsAt?.newValue && changes.clearDrawingsAt.newValue !== clearToken) {
+    clearToken = changes.clearDrawingsAt.newValue as number;
+    drawSuppressed = true;
+    window.postMessage({ source: NS, type: "tvsl-draw", trades: [], liveT: 0, drawEnabled, maxDrawn: tradeParams.maxDrawn, symbol, timeframe, clear: true }, window.location.origin);
+    return;
+  }
+  const v: Record<string, unknown> = {};
+  for (const [k, ch] of Object.entries(changes)) v[k] = ch.newValue;
+  applyStorage(v); cachedKey = ""; refreshPanel();
 });
 export { store };
-
-// Render immediately so the panel is visible even before the first candle arrives.
 {
   const s = symbolFromDom(); symbol = s.symbol; timeframe = s.timeframe;
   console.info("[tv-signal-lens] bridge loaded, waiting for WS data...");
   refreshPanel();
 }
-
 setInterval(() => { if (showPanel && !isPanelAttached()) { console.info("[tv-signal-lens] panel was detached, re-mounting"); refreshPanel(); } }, 1000);

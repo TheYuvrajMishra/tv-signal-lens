@@ -38,6 +38,16 @@
       ],
       "run_at": "document_idle",
       "world": "ISOLATED"
+    },
+    {
+      "matches": [
+        "*://*.tradingview.com/chart/*"
+      ],
+      "js": [
+        "content/draw-main.js"
+      ],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
   ]
 }

@@ -9,8 +9,6 @@ export default defineConfig({
     target: "es2022",
     rollupOptions: {
       input: {
-        "content/main-world": resolve(dir, "src/content/main-world.ts"),
-        "content/bridge": resolve(dir, "src/content/bridge.ts"),
         background: resolve(dir, "src/background.ts"),
         popup: resolve(dir, "src/ui/popup.html"),
       },
