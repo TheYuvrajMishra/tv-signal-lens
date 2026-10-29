@@ -1,7 +1,6 @@
-import { strategies } from "../strategies/index";
+const strategies = [{ id: "ema44", name: "EMA Cross (44)" }];
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement | HTMLSelectElement;
 const strategyEl = $("strategy") as HTMLSelectElement;
-for (const s of strategies) { const o = document.createElement("option"); o.value = s.id; o.textContent = s.name; strategyEl.appendChild(o); }
 chrome.storage.sync.get(["strategy", "emaPeriod", "sound", "panel", "notify"], (v) => {
   strategyEl.value = (v.strategy as string) ?? strategies[0].id;
   ($("emaPeriod") as HTMLInputElement).value = String((v.emaPeriod as number) ?? 44);

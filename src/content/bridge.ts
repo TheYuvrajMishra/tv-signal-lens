@@ -20,8 +20,11 @@ export function symbolFromDom(): { symbol: string; timeframe: string } {
 }
 function legendOhlc(): Candle | null {
   const text = [...document.querySelectorAll('[data-name="legend-source-item"]')].map((el) => el.textContent ?? "").join(" ");
-  const nums = [...text.matchAll(/-?\d[\d,]*\.?\d*/g)].map((m) => Number(m[0].replace(/,/g, ""))).filter(Number.isFinite);
-  if (nums.length < 4) return null;
+  // TradingView legend reads like "O4,026.660 H4,027.855 L4,022.830 C4,024.520" — parse labels first.
+  const labelled = text.match(/O\s*([\d,]+\.?\d*)\s*H\s*([\d,]+\.?\d*)\s*L\s*([\d,]+\.?\d*)\s*C\s*([\d,]+\.?\d*)/);
+  const nums = labelled ? labelled.slice(1).map((s) => Number(s.replace(/,/g, "")))
+    : [...text.matchAll(/-?\d[\d,]*\.?\d*/g)].map((m) => Number(m[0].replace(/,/g, ""))).filter(Number.isFinite);
+  if (nums.length < 4 || nums.some((n) => !Number.isFinite(n))) return null;
   const [o, h, l, c] = nums.slice(0, 4);
   return { t: Math.floor(Date.now() / 60000) * 60, o, h, l, c, v: 0 };
 }
@@ -55,7 +58,7 @@ window.addEventListener("message", (ev: MessageEvent) => {
   if (d.type === "candles" && Array.isArray(d.candles)) {
     mode = "WS"; lastWsAt = Date.now(); symbol = d.symbol || symbol; timeframe = d.timeframe || timeframe;
     store.upsert(d.candles); refreshPanel();
-  } else if (d.type === "ready") { const s = symbolFromDom(); symbol = s.symbol; timeframe = s.timeframe; }
+  } else if (d.type === "ready") { const s = symbolFromDom(); symbol = s.symbol; timeframe = s.timeframe; refreshPanel(); }
 });
 setTimeout(() => {
   if (lastWsAt) return;
@@ -79,3 +82,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   refreshPanel();
 });
 export { store };
+
+// Render immediately so the panel is visible even before the first candle arrives.
+{
+  const s = symbolFromDom(); symbol = s.symbol; timeframe = s.timeframe;
+  console.info("[tv-signal-lens] bridge loaded, waiting for WS data...");
+  refreshPanel();
+}
