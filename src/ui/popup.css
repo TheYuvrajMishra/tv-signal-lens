@@ -1,0 +1,5 @@
+body{font-family:system-ui,sans-serif;background:#0f1115;color:#e8eaf0;margin:0;width:280px}
+main{padding:14px;display:grid;gap:10px}h1{font-size:16px;margin:0}label{display:grid;gap:4px;font-size:13px}
+input,select{background:#1c1f27;color:#fff;border:1px solid #333;padding:6px;border-radius:6px}
+button{background:#f0b90b;border:0;padding:8px;border-radius:6px;font-weight:700;cursor:pointer}
+.disclaimer{font-size:11px;color:#9aa0aa}

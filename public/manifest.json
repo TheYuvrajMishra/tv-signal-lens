@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "TV Signal Lens",
+  "version": "0.1.0",
+  "description": "Capture TradingView candles and show strategy signals (44 EMA seed) in an on-page panel.",
+  "permissions": [
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "*://*.tradingview.com/chart/*"
+  ],
+  "action": {
+    "default_popup": "src/ui/popup.html",
+    "default_title": "TV Signal Lens"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.tradingview.com/chart/*"
+      ],
+      "js": [
+        "content/main-world.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://*.tradingview.com/chart/*"
+      ],
+      "js": [
+        "content/bridge.js"
+      ],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/*.js"
+      ],
+      "matches": [
+        "*://*.tradingview.com/chart/*"
+      ]
+    }
+  ]
+}
