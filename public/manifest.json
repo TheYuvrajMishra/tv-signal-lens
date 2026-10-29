@@ -39,15 +39,5 @@
       "run_at": "document_idle",
       "world": "ISOLATED"
     }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "content/*.js"
-      ],
-      "matches": [
-        "*://*.tradingview.com/chart/*"
-      ]
-    }
   ]
 }
