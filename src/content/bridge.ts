@@ -3,7 +3,7 @@ import { lastEma } from "../core/ema";
 import type { Candle } from "../core/parser";
 import { createEma44 } from "../strategies/ema44";
 import { pendingSignal } from "../strategies/types";
-import { renderPanel, hidePanel, type PanelState } from "../ui/panel";
+import { renderPanel, hidePanel, isPanelAttached, type PanelState } from "../ui/panel";
 
 const NS = "tv-signal-lens";
 const store = new CandleStore(5000);
@@ -72,6 +72,8 @@ chrome.storage.sync.get(["emaPeriod", "panel", "sound", "notify"], (v) => {
   if (typeof v.panel === "boolean") showPanel = v.panel;
   if (typeof v.sound === "boolean") sound = v.sound;
   if (typeof v.notify === "boolean") notify = v.notify;
+  console.info("[tv-signal-lens] settings loaded, showPanel =", showPanel);
+  refreshPanel();
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "sync") return;
@@ -89,3 +91,5 @@ export { store };
   console.info("[tv-signal-lens] bridge loaded, waiting for WS data...");
   refreshPanel();
 }
+
+setInterval(() => { if (showPanel && !isPanelAttached()) { console.info("[tv-signal-lens] panel was detached, re-mounting"); refreshPanel(); } }, 1000);

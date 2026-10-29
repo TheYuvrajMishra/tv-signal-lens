@@ -5,12 +5,16 @@ export interface PanelState {
   source: "WS" | "DOM"; count: number;
 }
 let host: HTMLElement | null = null; let root: ShadowRoot | null = null; let collapsed = false;
+export function isPanelAttached(): boolean { return !!host && host.isConnected; }
 function ensure(): ShadowRoot {
-  if (root) return root;
+  if (root && host && host.isConnected) return root;
+  host = null; root = null;
   host = document.createElement("div");
   host.id = "tv-signal-lens-panel";
   Object.assign(host.style, { position: "fixed", top: "16px", right: "16px", zIndex: "2147483647" });
-  document.body.appendChild(host);
+  // Mount on <html>, not <body>: TradingView replaces body content while the
+  // chart app boots, which detached the panel ~1s after it first appeared.
+  (document.documentElement || document.body).appendChild(host);
   root = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
   style.textContent = `.box{width:300px;background:#0f1115;color:#e8eaf0;border:1px solid #2a2e39;border-radius:12px;font:12px system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)}
