@@ -13,6 +13,8 @@
 <label>Swing lookback <input id="swingLookback" type="number" min="2" max="50" value="5"></label>
 <label>Spread (price units) <input id="spread" type="number" min="0" step="any" value="0"></label>
 <label>Max drawn trades <input id="maxDrawn" type="number" min="1" max="50" value="15"></label>
+<label><input id="dashboardFeed" type="checkbox" checked> Dashboard feed (realtime)</label>
+<label>Dashboard URL <input id="dashboardUrl" type="text" value="http://localhost:3000"></label>
 <button id="clearDrawings">Clear drawings</button>
 <button id="save">Save</button><p id="status"></p><p class="disclaimer">Not financial advice. No fees/slippage beyond the spread param.</p></main>
 <script type="module" src="./popup.ts"></script></body></html>

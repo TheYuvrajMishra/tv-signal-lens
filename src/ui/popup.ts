@@ -1,5 +1,5 @@
 const $ = (id: string) => document.getElementById(id) as HTMLInputElement | HTMLSelectElement;
-const keys = ["strategy", "emaPeriod", "sound", "panel", "notify", "draw", "rr", "slMode", "atrPeriod", "atrMult", "swingLookback", "spread", "maxDrawn"];
+const keys = ["strategy", "emaPeriod", "sound", "panel", "notify", "draw", "rr", "slMode", "atrPeriod", "atrMult", "swingLookback", "spread", "maxDrawn", "dashboardFeed", "dashboardUrl"];
 chrome.storage.sync.get(keys, (v) => {
   ($("strategy") as HTMLSelectElement).value = (v.strategy as string) ?? "ema44";
   ($("emaPeriod") as HTMLInputElement).value = String((v.emaPeriod as number) ?? 44);
@@ -14,6 +14,8 @@ chrome.storage.sync.get(keys, (v) => {
   ($("swingLookback") as HTMLInputElement).value = String((v.swingLookback as number) ?? 5);
   ($("spread") as HTMLInputElement).value = String((v.spread as number) ?? 0);
   ($("maxDrawn") as HTMLInputElement).value = String((v.maxDrawn as number) ?? 15);
+  ($("dashboardFeed") as HTMLInputElement).checked = v.dashboardFeed !== false;
+  ($("dashboardUrl") as HTMLInputElement).value = (v.dashboardUrl as string) ?? "http://localhost:3000";
 });
 document.getElementById("save")?.addEventListener("click", () => {
   chrome.storage.sync.set({
@@ -30,6 +32,8 @@ document.getElementById("save")?.addEventListener("click", () => {
     swingLookback: Number(($("swingLookback") as HTMLInputElement).value) || 5,
     spread: Number(($("spread") as HTMLInputElement).value) || 0,
     maxDrawn: Math.min(50, Math.max(1, Number(($("maxDrawn") as HTMLInputElement).value) || 15)),
+    dashboardFeed: ($("dashboardFeed") as HTMLInputElement).checked,
+    dashboardUrl: (($("dashboardUrl") as HTMLInputElement).value || "http://localhost:3000").replace(/\/$/, ""),
   }, () => { const st = document.getElementById("status"); if (st) st.textContent = "Saved."; });
 });
 document.getElementById("clearDrawings")?.addEventListener("click", () => {

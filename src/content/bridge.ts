@@ -21,6 +21,21 @@ let cachedKey = "";
 let sweepResult: SweepResult | null = null;
 let sweepInFlight = false; let lastSweepAt = 0; let lastSweepKey = "";
 let drawSuppressed = false; let lastDrawSig = ""; let clearToken = 0;
+let dashboardFeed = true; let dashboardUrl = "http://localhost:3000";
+let lastFeedAt = 0; let fedKey = ""; let fedClosedCount = 0;
+// Realtime feed to the dashboard in the same repo: full history once per
+// symbol/timeframe, then only the last candles (throttled to 2s) so the
+// dashboard chart moves in realtime without spamming localhost.
+function feedDashboard(all: Candle[], closedCount: number) {
+  if (!dashboardFeed || !symbol) return;
+  const key = `${symbol}|${timeframe}`;
+  const now = Date.now();
+  const isNewKey = key !== fedKey;
+  if (!isNewKey && closedCount === fedClosedCount && now - lastFeedAt < 2000) return;
+  fedKey = key; fedClosedCount = closedCount; lastFeedAt = now;
+  const candles = isNewKey ? all : all.slice(-20);
+  chrome.runtime.sendMessage({ type: "tvsl-dashboard-feed", url: dashboardUrl, symbol, interval: timeframe, candles }).catch(() => {});
+}
 
 export function symbolFromDom(): { symbol: string; timeframe: string } {
   const param = new URL(location.href).searchParams.get("symbol");
@@ -93,6 +108,7 @@ function refreshPanel() {
   };
   if (showPanel) renderPanel(state); else hidePanel();
   if (cachedBacktest) forwardDraw(cachedBacktest.trades, liveTrade, forming?.t ?? Math.floor(Date.now() / 1000));
+  feedDashboard(all, closed.length);
   maybeSweep(closed);
   const latest = signals[signals.length - 1];
   const sigKey = latest ? `${latest.t}-${latest.type}` : "";
@@ -133,8 +149,10 @@ function applyStorage(v: Record<string, unknown>) {
   if (typeof v.swingLookback === "number") tradeParams.swingLookback = v.swingLookback;
   if (typeof v.spread === "number") tradeParams.spread = v.spread;
   if (typeof v.maxDrawn === "number") tradeParams.maxDrawn = v.maxDrawn;
+  if (typeof v.dashboardFeed === "boolean") dashboardFeed = v.dashboardFeed;
+  if (typeof v.dashboardUrl === "string" && v.dashboardUrl) dashboardUrl = v.dashboardUrl;
 }
-chrome.storage.sync.get(["emaPeriod", "panel", "sound", "notify", "draw", "rr", "slMode", "atrPeriod", "atrMult", "swingLookback", "spread", "maxDrawn"], (v) => {
+chrome.storage.sync.get(["emaPeriod", "panel", "sound", "notify", "draw", "rr", "slMode", "atrPeriod", "atrMult", "swingLookback", "spread", "maxDrawn", "dashboardFeed", "dashboardUrl"], (v) => {
   applyStorage(v); console.info("[tv-signal-lens] settings loaded, showPanel =", showPanel); refreshPanel();
 });
 chrome.storage.onChanged.addListener((changes, area) => {

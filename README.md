@@ -109,3 +109,17 @@ an inline-SVG equity curve (cumulative R).
   `import` — `scripts/check-content.mjs` fails the build if one slips in.
 - For personal use. Respect TradingView's Terms of Service.
 - Signals are not financial advice.
+
+## Dashboard (same repo, realtime extension feed)
+
+The dashboard lives in `dashboard/` in this same repo (Next.js).
+
+```bash
+cd dashboard && npm install && npm run dev   # http://localhost:3000
+```
+
+Open a TradingView chart with this extension, turn **Dashboard feed** ON in
+the popup (default `http://localhost:3000`), and the extension posts its
+live candles to the dashboard in realtime (full history once per
+symbol/timeframe, then throttled updates). The dashboard stores them on disk
+and updates via SSE (`/api/stream`) — no Binance backfill by default.
